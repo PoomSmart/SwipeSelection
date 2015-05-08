@@ -26,6 +26,10 @@
 #import <UIKit/UITextInput.h>
 #import <UIKit/UIGestureRecognizerSubclass.h>
 #import <objc/runtime.h>
+#import <WebKit/WebKit.h>
+#import <WebCore/WebCore.h>
+
+//#include "InspCWrapper.m"
 
 
 #pragma mark - Headers
@@ -94,6 +98,8 @@
 // ?
 -(CGRect)caretRect;
 -(void)_scrollRectToVisible:(CGRect)visible animated:(BOOL)animated;
+-(void)_moveLeft:(BOOL)callback withHistory:(id)history;
+-(void)_moveRight:(BOOL)callback withHistory:(id)history;
 @end
 
 
@@ -395,13 +401,12 @@ Class AKFlickGestureRecognizer(){
     if (!privateInputDelegate && [keyboardImpl respondsToSelector:@selector(inputDelegate)]) {
         privateInputDelegate = (id)keyboardImpl.inputDelegate;
     }
-	
+
 	// Viber custom text view, which is super buggy with the tockenizer stuff.
 	if (privateInputDelegate != nil && [NSStringFromClass([privateInputDelegate class]) isEqualToString:@"VBEmoticonsContentTextView"]) {
 		privateInputDelegate = nil;
 		cancelled = YES; // Try disabling it
 	}
-	
 	
 	
 	
@@ -640,7 +645,7 @@ Class AKFlickGestureRecognizer(){
         if ([privateInputDelegate respondsToSelector:@selector(textRangeFromPosition:toPosition:)]) {
             textRange = [privateInputDelegate textRangeFromPosition:pivotPoint toPosition:_position];
         }
- 
+        
         CGPoint oldPrevious = previousPosition;
         // Should I change X?
         if (positiveX > xMinimum) { //|| positiveY > yMinimum) {
@@ -650,9 +655,14 @@ Class AKFlickGestureRecognizer(){
         }
 
         isFirstShiftDown = NO;
+        
+        // if privateInputDelegate is WKContentView, textRange becomes nil
+        // so trying to fix
+        BOOL webView = [NSStringFromClass([privateInputDelegate class]) isEqualToString:@"WKContentView"];
 
-        if (textRange && (oldPrevious.x != previousPosition.x || oldPrevious.y != previousPosition.y)) {
-            [privateInputDelegate setSelectedTextRange:textRange];
+        if ((textRange || webView) && (oldPrevious.x != previousPosition.x || oldPrevious.y != previousPosition.y)) {
+        	if (!webView)
+            	[privateInputDelegate setSelectedTextRange:textRange]; // not sure about this
 			
 			UIFieldEditor *fieldEditor = [objc_getClass("UIFieldEditor") sharedFieldEditor];
 			if (fieldEditor && [fieldEditor respondsToSelector:@selector(revealSelection)]) {
@@ -667,6 +677,17 @@ Class AKFlickGestureRecognizer(){
 			}
 			else if ([privateInputDelegate respondsToSelector:@selector(scrollSelectionToVisible:)]) {
 				[(UIView*)privateInputDelegate scrollSelectionToVisible:YES];
+			}
+			
+			if (webView) {
+				switch (textDirection) {
+					case UITextStorageDirectionForward:
+						[privateInputDelegate _moveRight:NO withHistory:nil];
+						break;
+					case UITextStorageDirectionBackward:
+						[privateInputDelegate _moveLeft:NO withHistory:nil];
+						break;
+				}
 			}
         }
 	}
@@ -853,6 +874,9 @@ static BOOL isMoreKey = NO;
 //- (BOOL)handleKeyCommand:(id)arg1 repeatOkay:(BOOL*)arg2{ %log; return %orig; }
 %end
 
-
+%ctor
+{
+	%init;
+}
 
 
